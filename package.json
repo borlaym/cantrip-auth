@@ -4,6 +4,8 @@
   "description": "\"Authentication middleware for Cantrip\"",
   "main": "index.js",
   "dependencies": {
+    "MD5": "~1.2.1",
+    "lodash": "~2.4.1"
   },
   "devDependencies": {
     "load-grunt-tasks": "~0.4.0",

@@ -1,3 +1,5 @@
+var md5 = require('MD5');
+var _ = require('lodash');
 var auth = {
 	/**
 	 * This middleware makes sure that the user making a request is authorized to do so.
