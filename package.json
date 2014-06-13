@@ -1,0 +1,34 @@
+{
+  "name": "cantrip-auth",
+  "version": "0.0.1",
+  "description": "\"Authentication middleware for Cantrip\"",
+  "main": "index.js",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "load-grunt-tasks": "~0.4.0",
+    "grunt": "~0.4.4",
+    "grunt-nodemon": "~0.2.1",
+    "grunt-contrib-jasmine": "^0.6.3",
+    "grunt-jasmine-node": "~0.2.1"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/borlaym/cantrip-auth.git"
+  },
+  "keywords": [
+    "rest",
+    "api",
+    "json"
+  ],
+  "author": "Kriek",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/borlaym/cantrip-auth/issues"
+  },
+  "homepage": "https://github.com/borlaym/cantrip-auth"
+}
