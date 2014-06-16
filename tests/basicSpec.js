@@ -30,6 +30,12 @@ describe("The access-control middleware for Cantrip", function() {
 			},
 			"/child": {
 				"GET": ["super"]
+			},
+			"/coll": {
+				"GET": []
+			},
+			"/coll/:id": {
+				"GET": ["owner"]
 			}
 		},
 		"_users": [{
@@ -274,6 +280,34 @@ describe("The access-control middleware for Cantrip", function() {
 			}, function(error, response, body) {
 				expect(body._owner).not.toBeDefined();
 				expect(Cantrip.data._contents.coll[1]._owner).not.toBeDefined();				
+				done();
+			});
+		});
+
+		it("the special \"owner\" role lets you interact with the _owner property, like letting you get only your entries", function(done) {
+			request({
+				method: "GET",
+				url: serverUrl + "coll/0",
+				headers: {
+					"Authorization": "Token " + token
+				},
+				json: {},
+			}, function(error, response, body) {
+				expect(body.foo).toBe("bar");
+				done();
+			});
+		});
+
+		it("and prevent you from seeing other users' entries", function(done) {
+			request({
+				method: "GET",
+				url: serverUrl + "coll/1",
+				headers: {
+					"Authorization": "Token " + token
+				},
+				json: {},
+			}, function(error, response, body) {
+				expect(body.error).toBeDefined();
 				done();
 			});
 		});
