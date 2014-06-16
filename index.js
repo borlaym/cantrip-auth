@@ -32,6 +32,13 @@ var auth = {
 		}
 		var acl = req.data._acl;
 		var url = req.path;
+		//Deny access to meta objects without 'super' group
+		if (url[1] === "_" && req.user.roles.indexOf("super") === -1) {
+			return next({
+				status: 403,
+				error: "Access denied."
+			});
+		}
 		//strip "/" character from the end of the url
 		if (url[url.length - 1] === "/") url = url.substr(0, url.length - 1);
 
@@ -77,8 +84,9 @@ var auth = {
 
 		//Check if we found any restrictions along the way
 		if (foundRestriction) {
-			res.status(403).send({
-				"error": "Access denied."
+			return next({
+				status: 403,
+				error: "Access denied."
 			});
 		} else {
 			next();
@@ -143,17 +151,18 @@ var auth = {
 
 var e = auth.acl;
 e.registerMiddleware = [
-	["before", "/_auth/signup", function(error, req, res, next) {
+	["before", "/signup", function(error, req, res, next) {
 		next();
 	}],
-	["before", "/_auth/signup", auth.userManagement.signup],
-	["alter", "/_auth/signup", function(error, req, res, next) {
+	["before", "/signup", auth.userManagement.signup],
+	["alter", "/signup", function(req, res, next) {
 		delete res.body.password;
-	}],
-	["before", "/_auth/login", function(error, req, res, next) {
 		next();
 	}],
-	["before", "/_auth/login", auth.userManagement.login],
+	["before", "/login", function(error, req, res, next) {
+		next();
+	}],
+	["before", "/login", auth.userManagement.login],
 ]
 
 module.exports = e;
