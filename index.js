@@ -1,5 +1,6 @@
 var md5 = require('MD5');
 var _ = require('lodash');
+var crypto = require('crypto');
 var auth = {
 	/**
 	 * This middleware makes sure that the user making a request is authorized to do so.
@@ -11,12 +12,12 @@ var auth = {
 		if (req.get("Authorization") || req.query.accessToken) {
 			var token = req.get("Authorization") ? req.get("Authorization").split(" ")[1] : req.query.accessToken;
 			try {
-				var user = auth.decrypt(token);
+				var user = auth.decrypt(token, req.data._salt);
 			} catch (err) {
 				var user = undefined;
 			}
 			if (user && user.expires > (new Date()).getTime()) {
-				req.user = _.find(Cantrip.data._users, function(u) {
+				req.user = _.find(req.data._users, function(u) {
 					return u._id === user._id
 				});
 			} else {
@@ -119,21 +120,21 @@ var auth = {
 			}
 
 			res.send({
-				token: auth.encrypt(toCrypt),
+				token: auth.encrypt(toCrypt, req.data._salt),
 				expires: expires
 			});
 		}
 	},
 
-	encrypt: function(obj) {
-		var cipher = crypto.createCipher('aes-256-cbc', this.data._salt);
+	encrypt: function(obj, salt) {
+		var cipher = crypto.createCipher('aes-256-cbc', salt);
 		var crypted = cipher.update(JSON.stringify(obj), 'utf8', 'hex')
 		crypted += cipher.final('hex');
 		return crypted;
 	},
 
-	decrypt: function(string) {
-		var decipher = crypto.createDecipher('aes-256-cbc', this.data._salt);
+	decrypt: function(string, salt) {
+		var decipher = crypto.createDecipher('aes-256-cbc', salt);
 		var dec = decipher.update(string, 'hex', 'utf8')
 		dec += decipher.final('utf8');
 		return JSON.parse(dec);
