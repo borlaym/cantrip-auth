@@ -21,7 +21,8 @@ describe("The access-control middleware for Cantrip", function() {
 			"foo": "bar",
 			"child": {
 				"secret": "secret"
-			}
+			},
+			"coll": []
 		},
 		"_salt": "cantrip-auth-test-salt",
 		"_acl": {
@@ -247,5 +248,34 @@ describe("The access-control middleware for Cantrip", function() {
 			});
 		});
 
+	});
+
+	describe("Ownership", function() {
+		it("should add an _owner property to an object posted to a collection while logged in", function(done) {
+			request({
+				method: "POST",
+				url: serverUrl + "coll",
+				json: {"foo": "bar"},
+				headers: {
+					"Authorization": "Token " + token
+				}
+			}, function(error, response, body) {
+				expect(body._owner).toBeDefined();
+				expect(Cantrip.data._contents.coll[0]._owner).toBeDefined();				
+				done();
+			});
+		});
+
+		it("but shouldn't if it was posted by an anonymous user", function(done) {
+			request({
+				method: "POST",
+				url: serverUrl + "coll",
+				json: {"foo": "bar"},
+			}, function(error, response, body) {
+				expect(body._owner).not.toBeDefined();
+				expect(Cantrip.data._contents.coll[1]._owner).not.toBeDefined();				
+				done();
+			});
+		});
 	});
 });

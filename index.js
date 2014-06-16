@@ -151,18 +151,36 @@ var auth = {
 
 var e = auth.acl;
 e.registerMiddleware = [
+	//Allows POSTing to non-existend node /signup
 	["before", "/signup", function(error, req, res, next) {
-		next();
+		if (req.method === "POST") return next();
+		else return next(error);
 	}],
+	//Handle signup
 	["before", "/signup", auth.userManagement.signup],
+	//Remove password hash from response after signing up
 	["alter", "/signup", function(req, res, next) {
 		delete res.body.password;
 		next();
 	}],
-	["before", "/login", function(error, req, res, next) {
+	//Add _owner property to posted object (overwriting it if it was specified)
+	["alter", "*", function(req, res, next) {
+		if (req.method === "POST" && req.user._id) {
+			var newEntry = _.find(req.nodes[req.nodes.length -1], function(o) {
+				return o._id === res.body._id;
+			});
+			newEntry._owner = req.user._id;
+			res.body._owner = req.user._id;
+		}
 		next();
 	}],
+	//Allows POSTing to non-existend node /login
+	["before", "/login", function(error, req, res, next) {
+		if (req.method === "POST") return next();
+		else return next(error);
+	}],
+	//Handle login
 	["before", "/login", auth.userManagement.login],
-]
+];
 
 module.exports = e;
