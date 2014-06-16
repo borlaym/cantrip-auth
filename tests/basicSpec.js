@@ -179,5 +179,73 @@ describe("The access-control middleware for Cantrip", function() {
 			});
 		});
 
+		it("should also work with Authorization header", function(done) {
+			request({
+				method: "GET",
+				url: serverUrl + "child",
+				headers: {
+					"Authorization": "Token " + token
+				},
+				json: {}
+			}, function(error, response, body) {
+				expect(body.secret).toBe("secret");
+				done();
+			});
+		});
+
+		it("should allow access to _meta objects as super user", function(done) {
+			request({
+				method: "GET",
+				url: serverUrl + "_salt",
+				headers: {
+					"Authorization": "Token " + token
+				},
+				json: {}
+			}, function(error, response, body) {
+				expect(body.value).toBe("cantrip-auth-test-salt");
+				done();
+			});
+		});
+
+		it("when you log in as a non-super user", function(done) {
+			request({
+				method: "POST",
+				url: serverUrl + "login",
+				json: {"_id": "testUser1", "password": "asdasd"}
+			}, function(error, response, body) {
+				expect(body.token).toBeDefined();
+				token = body.token;
+				done();
+			});
+		});
+
+		it("still shouldn't let you get a restricted object", function(done) {
+			request({
+				method: "GET",
+				url: serverUrl + "child",
+				headers: {
+					"Authorization": "Token " + token
+				},
+				json: {}
+			}, function(error, response, body) {
+				expect(body.error).toBeDefined();
+				done();
+			});
+		});
+
+		it("or a meta object", function(done) {
+			request({
+				method: "GET",
+				url: serverUrl + "_acl",
+				headers: {
+					"Authorization": "Token " + token
+				},
+				json: {}
+			}, function(error, response, body) {
+				expect(body.error).toBeDefined();
+				done();
+			});
+		});
+
 	});
 });
