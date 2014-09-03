@@ -1,6 +1,32 @@
 var md5 = require('MD5');
 var _ = require('lodash');
 var crypto = require('crypto');
+
+function getUser(req) {
+	if (req.get("Authorization") || req.query.accessToken) {
+		var token = req.get("Authorization") ? req.get("Authorization").split(" ")[1] : req.query.accessToken;
+		try {
+			var user = auth.decrypt(token, req.data._salt);
+		} catch (err) {
+			var user = undefined;
+		}
+		if (user && user.expires > (new Date()).getTime()) {
+			req.user = _.find(req.data._users, function(u) {
+				return u._id === user._id
+			});
+		} else {
+			req.user = {
+				roles: ["unknown"]
+			};
+		}
+	} else {
+		req.user = {
+			roles: ["unknown"]
+		};
+	}
+}
+
+
 var auth = {
 	/**
 	 * This middleware makes sure that the user making a request is authorized to do so.
@@ -9,27 +35,8 @@ var auth = {
 	 */
 	acl: function(req, res, next) {
 		//Check if there is an Authorization header or the token is passed in as the GET parameter accessToken
-		if (req.get("Authorization") || req.query.accessToken) {
-			var token = req.get("Authorization") ? req.get("Authorization").split(" ")[1] : req.query.accessToken;
-			try {
-				var user = auth.decrypt(token, req.data._salt);
-			} catch (err) {
-				var user = undefined;
-			}
-			if (user && user.expires > (new Date()).getTime()) {
-				req.user = _.find(req.data._users, function(u) {
-					return u._id === user._id
-				});
-			} else {
-				req.user = {
-					roles: ["unknown"]
-				};
-			}
-		} else {
-			req.user = {
-				roles: ["unknown"]
-			};
-		}
+		getUser(req);
+
 		var acl = req.data._acl;
 		var url = req.path;
 		//Deny access to meta objects without 'super' group
@@ -101,9 +108,9 @@ var auth = {
 			//Redirect to write to the _users node instead
 			req.targetNode = req.data._users;
 			Object.defineProperty(req, 'path', {
-			    get: function() {
-			        return "/_users";
-			    }
+				get: function() {
+					return "/_users";
+				}
 			});
 			//Check for required password field
 			if (!req.body.password) {
@@ -160,33 +167,38 @@ var auth = {
 var e = auth.acl;
 e.registerMiddleware = [
 	//Allows POSTing to non-existend node /signup
-	["before", "/signup", function(error, req, res, next) {
-		if (req.method === "POST") return next();
-		else return next(error);
-	}],
+	["before", "/signup",
+		function(error, req, res, next) {
+			if (req.method === "POST") return next();
+			else return next(error);
+		}
+	],
 	//Handle signup
 	["before", "/signup", auth.userManagement.signup],
 	//Remove password hash from response after signing up
-	["alter", "/signup", function(req, res, next) {
-		delete res.body.password;
-		next();
-	}],
-	//Add _owner property to posted object (overwriting it if it was specified)
-	["alter", "*", function(req, res, next) {
-		if (req.method === "POST" && req.user._id) {
-			var newEntry = _.find(req.nodes[req.nodes.length -1], function(o) {
-				return o._id === res.body._id;
-			});
-			newEntry._owner = req.user._id;
-			res.body._owner = req.user._id;
+	["alter", "/signup",
+		function(req, res, next) {
+			delete res.body.password;
+			next();
 		}
-		next();
-	}],
+	],
+	//Add _owner property to posted object (overwriting it if it was specified)
+	["before", "*",
+		function(req, res, next) {
+			getUser(req);
+			if (req.method === "POST" && req.user._id) {
+				req.body._owner = req.user._id;
+			}
+			next();
+		}
+	],
 	//Allows POSTing to non-existend node /login
-	["before", "/login", function(error, req, res, next) {
-		if (req.method === "POST") return next();
-		else return next(error);
-	}],
+	["before", "/login",
+		function(error, req, res, next) {
+			if (req.method === "POST") return next();
+			else return next(error);
+		}
+	],
 	//Handle login
 	["before", "/login", auth.userManagement.login],
 ];
