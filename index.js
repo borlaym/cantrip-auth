@@ -33,7 +33,7 @@ var auth = {
 		var acl = req.data._acl;
 		var url = req.path;
 		//Deny access to meta objects without 'super' group
-		if (url[1] === "_" && req.user.roles.indexOf("super") === -1) {
+		if (url[1] === "_" && url.indexOf("_contents") === -1 && !(url.indexOf("_users") !== -1 && req.method === "POST") && req.user.roles.indexOf("super") === -1) {
 			return next({
 				status: 403,
 				error: "Access denied."
@@ -41,6 +41,9 @@ var auth = {
 		}
 		//strip "/" character from the end of the url
 		if (url[url.length - 1] === "/") url = url.substr(0, url.length - 1);
+
+		//replace _contents with an empty string
+		url = url.replace("/_contents", "");
 
 		var foundRestriction = false; //This indicates whether there was any restriction found during the process. If not, the requests defaults to pass.
 		//Loop through all possible urls starting from the beginning, eg: /, /users, /users/:id, /users/:id/comments, /users/:id/comments/:id.
@@ -96,7 +99,12 @@ var auth = {
 	userManagement: {
 		signup: function(req, res, next) {
 			//Redirect to write to the _users node instead
-			req.nodes = [req.data._users];
+			req.targetNode = req.data._users;
+			Object.defineProperty(req, 'path', {
+			    get: function() {
+			        return "/_users";
+			    }
+			});
 			//Check for required password field
 			if (!req.body.password) {
 				res.status(400).send({

@@ -13,7 +13,8 @@
     "grunt-nodemon": "~0.2.1",
     "grunt-contrib-jasmine": "^0.6.3",
     "grunt-jasmine-node": "~0.2.1",
-    "request": "~2.36.0"
+    "request": "~2.36.0",
+    "Cantrip": "git+https://github.com/KriekApps/Cantrip.git"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
