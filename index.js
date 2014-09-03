@@ -81,7 +81,7 @@ var auth = {
 
 						//Check if the user is the owner of the object, when "owner" as a group is specified
 						if (acl[key][req.method].indexOf("owner") > -1) {
-							var target = _.last(req.nodes);
+							var target = req.targetNode;
 							if (target._owner === req.user._id) {
 								next();
 								return;
