@@ -126,7 +126,7 @@ var auth = {
 			//If email verification is turned on, the email field is required too
 			if (e.options.emailVerification && !req.body[e.options.emailField]) {
 				res.status(400).send({
-					"error": "Missing required field: "+e.options.emailField+"."
+					"error": "Missing required field: " + e.options.emailField + "."
 				});
 				return;
 			}
@@ -140,7 +140,7 @@ var auth = {
 			//If email verification is turned on, add a verification token
 			req.body.verified = true;
 			if (e.options.emailVerification) {
-				req.body.token = md5(Math.floor(Math.random()*100000000) + JSON.stringify(req.body));
+				req.body.token = md5(Math.floor(Math.random() * 100000000) + JSON.stringify(req.body));
 				req.body.verified = false;
 			}
 
@@ -202,6 +202,7 @@ var auth = {
 								"error": "Internal error."
 							});
 						} else {
+							req.cantrip.syncData(req, res, next);
 							res.status(200).send({
 								"success": true
 							});
@@ -214,6 +215,104 @@ var auth = {
 					return;
 				}
 			});
+		},
+
+		/**
+		 * Handle password reset. POST means a reset request, which sends out a reset token. PUT means the actual reset.
+		 * Requesting a reset requires an email.
+		 * Resetting the password requires an oldPassword, a newPassword and a token.
+		 */
+		reset: function(req, res, next) {
+			//Reset Request
+			if (req.method === "POST") {
+				if (!req.body[e.options.emailField]) {
+					res.status(400).send({
+						"error": "Missing required parameter " + e.options.emailField
+					});
+					return;
+				}
+				req.dataStore.get("/_users", function(err, users) {
+					var user = _.find(users, function(u) {
+						return u[e.options.emailField] === req.body[e.options.emailField];
+					});
+					if (!user) {
+						res.status(404).send({
+							"error": "User not found"
+						});
+						return;
+					}
+					var token = md5(Math.floor(Math.random() * 10000000) + JSON.stringify(user));
+					req.dataStore.set("/_users/" + user._id + "/token", token, function(err, r) {
+						if (err) {
+							console.log(err);
+						}
+						var mail = nodemailer.createTransport(e.options.emailServer);
+						mail.sendMail({
+							from: 'Fred Foo <foo@blurdybloop.com>', // sender address
+							to: user[e.options.emailField], // list of receivers
+							subject: 'Password reset request', // Subject line
+							html: '<b>Your password reset token is: </b>' + token // html body
+						}, function(err, info) {
+							if (err) {
+								console.log(err);
+							}
+							req.cantrip.syncData(req, res, next);
+							res.status(200).send({
+								"success": true
+							});
+						});
+
+					});
+
+				});
+			} else {
+				//Handling reset
+				if (!req.body.token) {
+					res.status(400).send({
+						"error": "Missing required parameter token."
+					});
+					return;
+				}
+				if (!req.body.oldPassword) {
+					res.status(400).send({
+						"error": "Missing required parameter oldPassword."
+					});
+					return;
+				}
+				if (!req.body.newPassword) {
+					res.status(400).send({
+						"error": "Missing required parameter newPassword."
+					});
+					return;
+				}
+				req.dataStore.get("/_users", function(err, users) {
+					var user = _.find(users, function(u) {
+						return u.token === req.body.token;
+					});
+					if (!user) {
+						res.status(404).send({
+							"error": "Reset request not found."
+						});
+						return;
+					}
+					req.dataStore.get("/_salt", function(err, salt) {
+						if (md5(req.body.oldPassword + salt) !== user.password) {
+							res.status(400).send({
+								"error": "Wrong password."
+							});
+							return;
+						}
+
+						req.dataStore.set("/_users/" + user._id + "/password", md5(req.body.newPassword + salt), function(err, r) {
+							req.cantrip.syncData(req, res, next);
+							res.status(200).send({
+								"success": true
+							});
+							return;
+						});
+					});
+				});
+			}
 		}
 	},
 
@@ -258,9 +357,9 @@ e.registerMiddleware = [
 			var mail = nodemailer.createTransport(e.options.emailServer);
 			mail.sendMail({
 				from: 'Fred Foo <foo@blurdybloop.com>', // sender address
-			    to: req.body[e.options.emailField], // list of receivers
-			    subject: 'Please verify your email address', // Subject line
-			    html: '<b>Your verification code is: </b>' + req.body.token // html body
+				to: req.body[e.options.emailField], // list of receivers
+				subject: 'Please verify your email address', // Subject line
+				html: '<b>Your verification code is: </b>' + req.body.token // html body
 			}, function(err, info) {
 				if (err) {
 					console.log(err);
@@ -298,6 +397,16 @@ e.registerMiddleware = [
 	],
 	//Handle verification
 	["before", "/auth/verify", auth.userManagement.verify],
+
+	//Allow POSTing and PUTting to non-existent node /auth/reset
+	["before", "/auth/reset",
+		function(error, req, res, next) {
+			if (req.method === "POST" || req.method === "PUT") return next();
+			else return next(error);
+		}
+	],
+	//Handle verification
+	["before", "/auth/reset", auth.userManagement.reset],
 ];
 
 //Default options used by the middleware
@@ -320,7 +429,6 @@ e.options = {
 		//Fill out
 	}
 };
-
 
 
 
