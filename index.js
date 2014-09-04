@@ -1,6 +1,7 @@
 var md5 = require('MD5');
 var _ = require('lodash');
 var crypto = require('crypto');
+var nodemailer = require('nodemailer');
 
 function getUser(req) {
 	if (req.get("Authorization") || req.query.accessToken) {
@@ -34,6 +35,7 @@ var auth = {
 	 * By default every user can do anything.
 	 */
 	acl: function(req, res, next) {
+		console.log(req.cantrip);
 		//Check if there is an Authorization header or the token is passed in as the GET parameter accessToken
 		getUser(req);
 
@@ -112,6 +114,7 @@ var auth = {
 					return "/_users";
 				}
 			});
+
 			//Check for required password field
 			if (!req.body.password) {
 				res.status(400).send({
@@ -119,22 +122,52 @@ var auth = {
 				});
 				return;
 			}
+
+			//If email verification is turned on, the email field is required too
+			if (e.options.emailVerification && !req.body[e.options.emailField]) {
+				res.status(400).send({
+					"error": "Missing required field: "+e.options.emailField+"."
+				});
+				return;
+			}
+
 			//Create password hash
 			req.body.password = md5(req.body.password + "" + req.data._salt);
+
 			//If it's not an array or doesn't exist, create an empty roles array
 			req.body.roles = [];
+
+			//If email verification is turned on, add a verification token
+			req.body.verified = true;
+			if (e.options.emailVerification) {
+				req.body.token = md5(Math.floor(Math.random()*100000000) + JSON.stringify(req.body));
+				req.body.verified = false;
+			}
+
+			//Procceed to posting to _users
 			next();
 		},
 		login: function(req, res, next) {
 			var user = _.find(req.data._users, function(u) {
 				return u._id === req.body._id
 			});
+
+			//Check password
 			if (!user || user.password !== md5(req.body.password + "" + req.data._salt)) {
 				res.status(403).send({
 					"error": "Wrong _id or password."
 				});
 				return;
 			}
+
+			//If email verification is turned on, check if the user was verified
+			if (e.options.emailVerification && !user.verified) {
+				res.status(403).send({
+					"error": "User is not verified."
+				});
+				return;
+			}
+
 			var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
 			var toCrypt = {
 				_id: user._id,
@@ -145,6 +178,41 @@ var auth = {
 			res.send({
 				token: auth.encrypt(toCrypt, req.data._salt),
 				expires: expires
+			});
+		},
+		/**
+		 * Verify your email after registration. Gets the user belonging to the sent token if there is one and verifies that user
+		 */
+		verify: function(req, res, next) {
+			if (!req.body.token) {
+				res.status(403).send({
+					"error": "Missing verification token."
+				});
+				return;
+			}
+
+			req.dataStore.get("/_users", function(err, users) {
+				var user = _.find(users, function(u) {
+					return u.token === req.body.token;
+				});
+				if (user) {
+					req.dataStore.set("/_users/" + user._id + "/verified", true, function(err, r) {
+						if (err) {
+							res.status(300).send({
+								"error": "Internal error."
+							});
+						} else {
+							res.status(200).send({
+								"success": true
+							});
+						}
+					});
+				} else {
+					res.status(400).send({
+						"error": "Wrong token."
+					});
+					return;
+				}
 			});
 		}
 	},
@@ -166,20 +234,39 @@ var auth = {
 
 var e = auth.acl;
 e.registerMiddleware = [
-	//Allows POSTing to non-existend node /signup
-	["before", "/signup",
+	//Allows POSTing to non-existend node /auth/signup
+	["before", "/auth/signup",
 		function(error, req, res, next) {
 			if (req.method === "POST") return next();
 			else return next(error);
 		}
 	],
 	//Handle signup
-	["before", "/signup", auth.userManagement.signup],
+	["before", "/auth/signup", auth.userManagement.signup],
 	//Remove password hash from response after signing up
-	["alter", "/signup",
+	["alter", "/auth/signup",
 		function(req, res, next) {
 			delete res.body.password;
+			delete res.body.token;
+			delete res.body.verified;
 			next();
+		}
+	],
+	//Send email with verification token to user
+	["after", "/auth/signup",
+		function(req, res, next) {
+			var mail = nodemailer.createTransport(e.options.emailServer);
+			mail.sendMail({
+				from: 'Fred Foo <foo@blurdybloop.com>', // sender address
+			    to: req.body[e.options.emailField], // list of receivers
+			    subject: 'Please verify your email address', // Subject line
+			    html: '<b>Your verification code is: </b>' + req.body.token // html body
+			}, function(err, info) {
+				if (err) {
+					console.log(err);
+				}
+				next();
+			});
 		}
 	],
 	//Add _owner property to posted object (overwriting it if it was specified)
@@ -192,15 +279,49 @@ e.registerMiddleware = [
 			next();
 		}
 	],
-	//Allows POSTing to non-existend node /login
-	["before", "/login",
+	//Allows POSTing to non-existend node /auth/login
+	["before", "/auth/login",
 		function(error, req, res, next) {
 			if (req.method === "POST") return next();
 			else return next(error);
 		}
 	],
 	//Handle login
-	["before", "/login", auth.userManagement.login],
+	["before", "/auth/login", auth.userManagement.login],
+
+	//Allow POSTing to non-existent node /auth/verify
+	["before", "/auth/verify",
+		function(error, req, res, next) {
+			if (req.method === "POST") return next();
+			else return next(error);
+		}
+	],
+	//Handle verification
+	["before", "/auth/verify", auth.userManagement.verify],
 ];
+
+//Default options used by the middleware
+e.options = {
+	/**
+	 * An email is sent after registering. Before the user sends a request using a defined token sent in the mail, it has a verified: false tag.
+	 * @type {Boolean}
+	 */
+	emailVerification: true,
+	/**
+	 * The name of the field containing the user's email address. By default it's the _id, but you can redefine it to any other field (like email)
+	 * @type {String}
+	 */
+	emailField: "_id",
+	/**
+	 * Settings and authentication of the email server
+	 * @type {Object}
+	 */
+	emailServer: {
+		//Fill out
+	}
+};
+
+
+
 
 module.exports = e;
