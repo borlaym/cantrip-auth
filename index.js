@@ -14,6 +14,9 @@ function getUser(req) {
 			req.user = _.find(req.data._users, function(u) {
 				return u._id === user._id
 			});
+			if(req.user.roles.indexOf('unknown') == -1){
+				req.user.roles.push("unknown");
+			}
 		} else {
 			req.user = {
 				roles: ["unknown"]
