@@ -1,6 +1,7 @@
 var md5 = require('MD5');
 var _ = require('lodash');
 var crypto = require('crypto');
+var deasync = require("deasync");
 
 function getUser(req) {
 	if (req.get("Authorization") || req.query.accessToken) {
@@ -84,10 +85,18 @@ var auth = {
 
 						//Check if the user is the owner of the object, when "owner" as a group is specified
 						if (acl[key][req.method].indexOf("owner") > -1) {
-							var target = req.targetNode;
-							if (target._owner === req.user._id) {
-								next();
-								return;
+							var node;
+							var done = false;
+							req.dataStore.get("/_contents" + fragment, function(err, res) {
+								if (err) console.log("Error ", err);
+								node = res;
+								done = true;
+								if (node._owner === req.user._id) {
+									next();
+								}
+							});
+							while (!done) {
+								deasync.runLoopOnce();
 							}
 						}
 					}
