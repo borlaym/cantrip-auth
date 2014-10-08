@@ -40,7 +40,6 @@ var auth = {
 	acl: function(req, res, next) {
 		//Check if there is an Authorization header or the token is passed in as the GET parameter accessToken
 		getUser(req);
-
 		var acl = req.data._acl;
 		var url = req.path;
 		//Deny access to meta objects without 'super' group
@@ -122,7 +121,8 @@ var auth = {
 			Object.defineProperty(req, 'path', {
 				get: function() {
 					return "/_users";
-				}
+				},
+				configurable: true
 			});
 			//Check for required password field
 			if (!req.body.password) {

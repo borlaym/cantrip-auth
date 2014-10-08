@@ -11,7 +11,7 @@ describe("The access-control middleware for Cantrip", function() {
 		expect(Cantrip).toBeDefined();
 	});
 
-	Cantrip.options.file = "tests/test" + Math.floor(Math.random() * 10000000000) + ".json";
+	Cantrip.options.namespace = "tests/test" + Math.floor(Math.random() * 10000000000);
 
 	Cantrip.use(auth);
 
@@ -44,9 +44,8 @@ describe("The access-control middleware for Cantrip", function() {
 			"roles": ["super"]
 		}]
 	};
-
+	Cantrip.dataStore.data = Cantrip.data;
 	var token;
-
 
 	describe("Denying access to unauthorized requests", function() {
 
