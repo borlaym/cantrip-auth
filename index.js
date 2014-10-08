@@ -116,7 +116,6 @@ var auth = {
 
 	userManagement: {
 		signup: function(req, res, next) {
-			//Redirect to write to the _users node instead
 			req.targetNode = req.data._users;
 			Object.defineProperty(req, 'path', {
 				get: function() {
@@ -126,16 +125,18 @@ var auth = {
 			});
 			//Check for required password field
 			if (!req.body.password) {
-				res.status(400).send({
-					"error": "Missing required field: password."
+				return next({
+					error: "Missing required field: password.",
+					status: 400
 				});
-				return;
 			}
 			//Create password hash
 			req.body.password = md5(req.body.password + "" + req.data._salt);
 			//If it's not an array or doesn't exist, create an empty roles array
 			req.body.roles = [];
-			next();
+			req.cantrip.post(req, res, function(err) {
+				next(err);
+			});
 		},
 		login: function(req, res, next) {
 			var user = _.find(req.data._users, function(u) {
@@ -154,10 +155,11 @@ var auth = {
 				expires: expires
 			}
 
-			res.send({
+			res.body = {
 				token: auth.encrypt(toCrypt, req.data._salt),
 				expires: expires
-			});
+			};
+			next();
 		}
 	},
 
@@ -178,22 +180,13 @@ var auth = {
 
 var e = auth.acl;
 e.registerMiddleware = [
-	//Allows POSTing to non-existend node /signup
-	["before", "/signup",
-		function(error, req, res, next) {
-			if (req.method === "POST") return next();
-			else return next(error);
-		}
-	],
 	//Handle signup
-	["before", "/signup", auth.userManagement.signup],
-	//Remove password hash from response after signing up
-	["alter", "/signup",
-		function(req, res, next) {
-			delete res.body.password;
-			next();
-		}
-	],
+	["special", "/signup", auth.userManagement.signup],
+	//Don't return the password
+	["special", "/signup", function(req, res, next) {
+		delete res.body.password;
+		next();
+	}],
 	//Add _owner property to posted object (overwriting it if it was specified)
 	["before", "*",
 		function(req, res, next) {
@@ -204,15 +197,8 @@ e.registerMiddleware = [
 			next();
 		}
 	],
-	//Allows POSTing to non-existend node /login
-	["before", "/login",
-		function(error, req, res, next) {
-			if (req.method === "POST") return next();
-			else return next(error);
-		}
-	],
 	//Handle login
-	["before", "/login", auth.userManagement.login],
+	["special", "/login", auth.userManagement.login],
 ];
 
 module.exports = e;
