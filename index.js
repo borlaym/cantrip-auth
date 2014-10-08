@@ -91,12 +91,12 @@ var auth = {
 								if (err) console.log("Error ", err);
 								node = res;
 								done = true;
-								if (node._owner === req.user._id) {
-									next();
-								}
 							});
 							while (!done) {
 								deasync.runLoopOnce();
+							}
+							if (node && node._owner === req.user._id) {
+								return next();
 							}
 						}
 					}
