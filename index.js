@@ -124,20 +124,57 @@ var auth = {
 				},
 				configurable: true
 			});
-			//Check for required password field
-			if (!req.body.password) {
-				return next({
-					error: "Missing required field: password.",
-					status: 400
+
+			// Check if manual signup
+			if (req.body.password) {
+				//Create password hash
+				req.body.password = md5(req.body.password + "" + req.data._salt);
+				//If it's not an array or doesn't exist, create an empty roles array
+				req.body.roles = [];
+				req.body.profile = req.body.profile || {};
+				req.cantrip.post(req, res, function(err) {
+					next(err);
+				});
+			} else if (req.body.fbToken) {
+				// Facebook registration
+				request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
+					var body = JSON.parse(body);
+
+
+					// fb error handling
+					if (err || body.error) {
+						var error = err || body.error;
+						res.status(400).send(error);
+						return;
+					}
+
+					// check if user already in database
+					var user = _.find(req.data._users, function(u) {
+						return u.fbId === body.id
+					});
+					if (user) {
+						res.status(400).send({
+							"error": "User already registered."
+						});
+						return;
+					}
+
+					req.body.password = "";
+					//If it's not an array or doesn't exist, create an empty roles array
+					req.body.roles = [];
+					req.body.profile = req.body.profile || {};
+					req.body.profile.facebook = body;
+
+					req.cantrip.post(req, res, function(err) {
+						next(err);
+					});
+
+				});
+			} else {
+				res.status(400).send({
+					"error": "Missing parameters (fbToken | password)"
 				});
 			}
-			//Create password hash
-			req.body.password = md5(req.body.password + "" + req.data._salt);
-			//If it's not an array or doesn't exist, create an empty roles array
-			req.body.roles = [];
-			req.cantrip.post(req, res, function(err) {
-				next(err);
-			});
 		},
 		login: function(req, res, next) {
 
@@ -160,46 +197,37 @@ var auth = {
 			}
 		},
 		fbLogin: function(req, res, next) {
-			// send error if no fbToken is given
-			if (!req.body.fbToken) {
-				res.status(403).send({
-					"error": "fbToken is missing"
+			request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
+				var body = JSON.parse(body);
+
+				// fb error handling
+				if (err || body.error) {
+					var error = err || body.error;
+					res.status(403).send(error);
+					return;
+				}
+
+				// find user
+				var user = _.find(req.data._users, function(u) {
+					if(u.profile.facebook)
+					return u.profile.facebook.id === body.id;
 				});
-				return;
-			} else {
-				request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
-					var body = JSON.parse(body);
 
-					// fb error handling
-					if (err || body.error) {
-						var error = err || body.error;
-						res.status(403).send(error);
-						return;
-					} else {
+				// if user not registered
+				if (!user) {
+					res.status(403).send({
+						"error": "User not found"
+					});
+					return;
+				}
 
-						// find user
-						var user = _.find(req.data._users, function(u) {
-							console.log(u.fbId, body.id);
-							return u.fbId === body.id
-						});
+				// all is well return token
+				res.body = auth.generateToken(user, req);
+				next();
 
-						// if user not registered
-						if (!user) {
-							res.status(403).send({
-								"error": "User not found"
-							});
-							return;
-						} else {
 
-							// all is well return token
-							res.body = auth.generateToken(user, req);
-							next();
+			});
 
-						}
-
-					}
-				});
-			}
 		}
 	},
 
