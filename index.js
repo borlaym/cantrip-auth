@@ -2,6 +2,7 @@ var md5 = require('MD5');
 var _ = require('lodash');
 var crypto = require('crypto');
 var deasync = require("deasync");
+var request = require('request');
 
 function getUser(req) {
 	if (req.get("Authorization") || req.query.accessToken) {
@@ -15,7 +16,7 @@ function getUser(req) {
 			req.user = _.find(req.data._users, function(u) {
 				return u._id === user._id
 			});
-			if(req.user.roles.indexOf('unknown') == -1){
+			if (req.user.roles.indexOf('unknown') == -1) {
 				req.user.roles.push("unknown");
 			}
 		} else {
@@ -157,9 +158,55 @@ var auth = {
 
 			res.body = {
 				token: auth.encrypt(toCrypt, req.data._salt),
+				roles: user.roles,
 				expires: expires
 			};
 			next();
+		},
+		fbLogin: function(req, res, next) {
+			if (!req.body.fbToken) {
+				res.status(403).send({
+					"error": "fbToken is missing"
+				});
+				return;
+			} else {
+				request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
+					if (err) {
+						res.status(403).send(err);
+						return;
+					} else {
+						var body = JSON.parse(body);
+						var user = _.find(req.data._users, function(u) {
+							console.log(u.fbId,body.id);
+							return u.fbId === body.id
+						});
+
+						if (!user) {
+							res.status(403).send({
+								"error": "User is missing, register first"
+							});
+							return;
+						} else {
+
+							var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
+							var toCrypt = {
+								_id: user._id,
+								roles: user.roles,
+								expires: expires
+							}
+
+							res.body = {
+								token: auth.encrypt(toCrypt, req.data._salt),
+								roles: user.roles,
+								expires: expires
+							};
+							next();
+
+						}
+
+					}
+				});
+			}
 		}
 	},
 
@@ -183,10 +230,12 @@ e.registerMiddleware = [
 	//Handle signup
 	["special", "/signup", auth.userManagement.signup],
 	//Don't return the password
-	["special", "/signup", function(req, res, next) {
-		delete res.body.password;
-		next();
-	}],
+	["special", "/signup",
+		function(req, res, next) {
+			delete res.body.password;
+			next();
+		}
+	],
 	//Add _owner property to posted object (overwriting it if it was specified)
 	["before", "*",
 		function(req, res, next) {
@@ -199,6 +248,7 @@ e.registerMiddleware = [
 	],
 	//Handle login
 	["special", "/login", auth.userManagement.login],
+	["special", "/fbLogin", auth.userManagement.fbLogin]
 ];
 
 module.exports = e;
