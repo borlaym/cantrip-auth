@@ -165,6 +165,7 @@ var auth = {
 					req.body.roles = [];
 					req.body.profile = req.body.profile || {};
 					req.body.profile.facebook = body;
+					delete req.body.fbToken;
 
 					req.cantrip.post(req, res, function(err) {
 						next(err);
@@ -173,7 +174,7 @@ var auth = {
 				});
 			} else {
 				res.status(400).send({
-					"error": "Missing parameters (fbToken | password)"
+					"error": "Missing parameter (fbToken || password)"
 				});
 			}
 		},
