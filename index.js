@@ -140,30 +140,27 @@ var auth = {
 			});
 		},
 		login: function(req, res, next) {
-			var user = _.find(req.data._users, function(u) {
-				return u._id === req.body._id
-			});
-			if (!user || user.password !== md5(req.body.password + "" + req.data._salt)) {
-				res.status(403).send({
-					"error": "Wrong _id or password."
-				});
-				return;
-			}
-			var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
-			var toCrypt = {
-				_id: user._id,
-				roles: user.roles,
-				expires: expires
-			}
 
-			res.body = {
-				token: auth.encrypt(toCrypt, req.data._salt),
-				roles: user.roles,
-				expires: expires
-			};
-			next();
+			// check if login with facebook or password
+			if (req.body.fbToken) {
+				auth.userManagement.fbLogin(req, res, next);
+			} else {
+				var user = _.find(req.data._users, function(u) {
+					return u._id === req.body._id
+				});
+				if (!user || user.password !== md5(req.body.password + "" + req.data._salt)) {
+					res.status(403).send({
+						"error": "Wrong _id or password."
+					});
+					return;
+				}
+
+				res.body = auth.generateToken(user, req);
+				next();
+			}
 		},
 		fbLogin: function(req, res, next) {
+			// send error if no fbToken is given
 			if (!req.body.fbToken) {
 				res.status(403).send({
 					"error": "fbToken is missing"
@@ -171,35 +168,31 @@ var auth = {
 				return;
 			} else {
 				request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
-					if (err) {
-						res.status(403).send(err);
+					var body = JSON.parse(body);
+
+					// fb error handling
+					if (err || body.error) {
+						var error = err || body.error;
+						res.status(403).send(error);
 						return;
 					} else {
-						var body = JSON.parse(body);
+
+						// find user
 						var user = _.find(req.data._users, function(u) {
-							console.log(u.fbId,body.id);
+							console.log(u.fbId, body.id);
 							return u.fbId === body.id
 						});
 
+						// if user not registered
 						if (!user) {
 							res.status(403).send({
-								"error": "User is missing, register first"
+								"error": "User not found"
 							});
 							return;
 						} else {
 
-							var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
-							var toCrypt = {
-								_id: user._id,
-								roles: user.roles,
-								expires: expires
-							}
-
-							res.body = {
-								token: auth.encrypt(toCrypt, req.data._salt),
-								roles: user.roles,
-								expires: expires
-							};
+							// all is well return token
+							res.body = auth.generateToken(user, req);
 							next();
 
 						}
@@ -208,6 +201,22 @@ var auth = {
 				});
 			}
 		}
+	},
+
+	generateToken: function(user, req) {
+		var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
+		var toCrypt = {
+			_id: user._id,
+			roles: user.roles,
+			expires: expires
+		}
+
+		return {
+			token: auth.encrypt(toCrypt, req.data._salt),
+			_id: user._id,
+			roles: user.roles,
+			expires: expires
+		};
 	},
 
 	encrypt: function(obj, salt) {
@@ -247,8 +256,7 @@ e.registerMiddleware = [
 		}
 	],
 	//Handle login
-	["special", "/login", auth.userManagement.login],
-	["special", "/fbLogin", auth.userManagement.fbLogin]
+	["special", "/login", auth.userManagement.login]
 ];
 
 module.exports = e;
