@@ -150,7 +150,8 @@ var auth = {
 
 					// check if user already in database
 					var user = _.find(req.data._users, function(u) {
-						return u.fbId === body.id
+						if(u.profile.facebook)
+						return u.profile.facebook.id === body.id;
 					});
 					if (user) {
 						res.status(400).send({
