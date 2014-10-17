@@ -202,3 +202,15 @@ e.registerMiddleware = [
 ];
 
 module.exports = e;
+
+e.authenticate = function(req, res, next) {
+	auth.acl(req, res, next);
+};
+
+e.signup = function(req, res, next) {
+	auth.signup(req, res, next);
+}
+
+e.login = function(req, res, next) {
+	auth.login(req, res, next);
+}
