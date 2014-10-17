@@ -2,6 +2,7 @@ var md5 = require('MD5');
 var _ = require('lodash');
 var crypto = require('crypto');
 var deasync = require("deasync");
+var request = require('request');
 
 function getUser(req) {
 	if (req.get("Authorization") || req.query.accessToken) {
@@ -15,7 +16,7 @@ function getUser(req) {
 			req.user = _.find(req.data._users, function(u) {
 				return u._id === user._id
 			});
-			if(req.user.roles.indexOf('unknown') == -1){
+			if (req.user.roles.indexOf('unknown') == -1) {
 				req.user.roles.push("unknown");
 			}
 		} else {
@@ -123,44 +124,129 @@ var auth = {
 				},
 				configurable: true
 			});
-			//Check for required password field
-			if (!req.body.password) {
-				return next({
-					error: "Missing required field: password.",
-					status: 400
+
+			// Check if manual signup
+			if (req.body.password) {
+				//Create password hash
+				req.body.password = md5(req.body.password + "" + req.data._salt);
+				//If it's not an array or doesn't exist, create an empty roles array
+				req.body.roles = [];
+				req.body.profile = req.body.profile || {};
+				req.cantrip.post(req, res, function(err) {
+					next(err);
+				});
+			} else if (req.body.fbToken) {
+				// Facebook registration
+				request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
+					var body = JSON.parse(body);
+
+
+					// fb error handling
+					if (err || body.error) {
+						var error = err || body.error;
+						res.status(400).send(error);
+						return;
+					}
+
+					// check if user already in database
+					var user = _.find(req.data._users, function(u) {
+						if(u.profile.facebook)
+						return u.profile.facebook.id === body.id;
+					});
+					if (user) {
+						res.status(400).send({
+							"error": "User already registered."
+						});
+						return;
+					}
+
+					req.body.password = "";
+					//If it's not an array or doesn't exist, create an empty roles array
+					req.body.roles = [];
+					req.body.profile = req.body.profile || {};
+					req.body.profile.facebook = body;
+					delete req.body.fbToken;
+
+					req.cantrip.post(req, res, function(err) {
+						next(err);
+					});
+
+				});
+			} else {
+				res.status(400).send({
+					"error": "Missing parameter (fbToken || password)"
 				});
 			}
-			//Create password hash
-			req.body.password = md5(req.body.password + "" + req.data._salt);
-			//If it's not an array or doesn't exist, create an empty roles array
-			req.body.roles = [];
-			req.cantrip.post(req, res, function(err) {
-				next(err);
-			});
 		},
 		login: function(req, res, next) {
-			var user = _.find(req.data._users, function(u) {
-				return u._id === req.body._id
-			});
-			if (!user || user.password !== md5(req.body.password + "" + req.data._salt)) {
-				res.status(403).send({
-					"error": "Wrong _id or password."
-				});
-				return;
-			}
-			var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
-			var toCrypt = {
-				_id: user._id,
-				roles: user.roles,
-				expires: expires
-			}
 
-			res.body = {
-				token: auth.encrypt(toCrypt, req.data._salt),
-				expires: expires
-			};
-			next();
+			// check if login with facebook or password
+			if (req.body.fbToken) {
+				auth.userManagement.fbLogin(req, res, next);
+			} else {
+				var user = _.find(req.data._users, function(u) {
+					return u._id === req.body._id
+				});
+				if (!user || user.password !== md5(req.body.password + "" + req.data._salt)) {
+					res.status(403).send({
+						"error": "Wrong _id or password."
+					});
+					return;
+				}
+
+				res.body = auth.generateToken(user, req);
+				next();
+			}
+		},
+		fbLogin: function(req, res, next) {
+			request.get('https://graph.facebook.com/me?access_token=' + req.body.fbToken, function(err, response, body) {
+				var body = JSON.parse(body);
+
+				// fb error handling
+				if (err || body.error) {
+					var error = err || body.error;
+					res.status(403).send(error);
+					return;
+				}
+
+				// find user
+				var user = _.find(req.data._users, function(u) {
+					if(u.profile.facebook)
+					return u.profile.facebook.id === body.id;
+				});
+
+				// if user not registered
+				if (!user) {
+					res.status(403).send({
+						"error": "User not found"
+					});
+					return;
+				}
+
+				// all is well return token
+				res.body = auth.generateToken(user, req);
+				next();
+
+
+			});
+
 		}
+	},
+
+	generateToken: function(user, req) {
+		var expires = (new Date()).getTime() + 1000 * 60 * 60 * 24;
+		var toCrypt = {
+			_id: user._id,
+			roles: user.roles,
+			expires: expires
+		}
+
+		return {
+			token: auth.encrypt(toCrypt, req.data._salt),
+			_id: user._id,
+			roles: user.roles,
+			expires: expires
+		};
 	},
 
 	encrypt: function(obj, salt) {
@@ -183,10 +269,12 @@ e.registerMiddleware = [
 	//Handle signup
 	["special", "/signup", auth.userManagement.signup],
 	//Don't return the password
-	["special", "/signup", function(req, res, next) {
-		delete res.body.password;
-		next();
-	}],
+	["special", "/signup",
+		function(req, res, next) {
+			delete res.body.password;
+			next();
+		}
+	],
 	//Add _owner property to posted object (overwriting it if it was specified)
 	["before", "*",
 		function(req, res, next) {
@@ -198,7 +286,7 @@ e.registerMiddleware = [
 		}
 	],
 	//Handle login
-	["special", "/login", auth.userManagement.login],
+	["special", "/login", auth.userManagement.login]
 ];
 
 module.exports = e;
