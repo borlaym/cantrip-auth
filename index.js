@@ -42,7 +42,7 @@ var auth = {
 		//Check if there is an Authorization header or the token is passed in as the GET parameter accessToken
 		getUser(req);
 		var acl = req.data._acl;
-		var url = req.path;
+		var url = req.originalUrl;
 		//Deny access to meta objects without 'super' group
 		if (url[1] === "_" && url.indexOf("_contents") === -1 && !(url.indexOf("_users") !== -1 && req.method === "POST") && req.user.roles.indexOf("super") === -1) {
 			return next({
